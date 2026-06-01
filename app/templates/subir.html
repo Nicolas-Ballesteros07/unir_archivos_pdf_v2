@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Combinador de ZIP + PDFs (con almacenamiento externo)</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        .container { max-width: 800px; margin: auto; }
+        .file-input { margin: 1rem 0; }
+        button { padding: 0.5rem 1rem; }
+        .error { color: red; }
+        .success { color: green; }
+        #progress { margin-top: 1rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Combinar ZIP y/o PDFs en un solo PDF</h1>
+    <p>Los archivos se subirán directamente a Vercel Blob (hasta 50 MB por archivo).</p>
+    <p>Luego se procesarán en el servidor.</p>
+    
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+    
+    <form id="uploadForm" method="post">
+        {% csrf_token %}
+        <div class="file-input">
+            <label>Archivo ZIP (opcional):</label><br>
+            <input type="file" id="zipFile" accept=".zip">
+        </div>
+        <div class="file-input">
+            <label>Archivos PDF (opcional, múltiple):</label><br>
+            <input type="file" id="pdfFiles" accept=".pdf" multiple>
+        </div>
+        <button type="button" id="submitBtn">Combinar y descargar</button>
+    </form>
+    <div id="progress"></div>
+</div>
+
+<script>
+    // Reemplaza con tu token de Vercel Blob (debe ser público de solo escritura)
+    // Lo ideal es obtenerlo desde una variable de entorno expuesta (por Django)
+    // Para simplicidad, lo pondremos manualmente, pero en producción usa una vista que devuelva el token.
+    const BLOB_TOKEN = '{{ vercel_blob_token }}';  // Lo pasaremos desde la vista
+    
+    document.getElementById('submitBtn').addEventListener('click', async () => {
+        const zipFile = document.getElementById('zipFile').files[0];
+        const pdfFiles = document.getElementById('pdfFiles').files;
+        const progressDiv = document.getElementById('progress');
+        
+        progressDiv.innerHTML = '<p>Subiendo archivos a almacenamiento...</p>';
+        
+        let zipUrl = null;
+        let pdfUrls = [];
+        
+        try {
+            // Subir ZIP si existe
+            if (zipFile) {
+                zipUrl = await subirABlob(zipFile);
+            }
+            
+            // Subir cada PDF
+            for (let i = 0; i < pdfFiles.length; i++) {
+                const url = await subirABlob(pdfFiles[i]);
+                pdfUrls.push(url);
+            }
+            
+            // Enviar URLs al backend
+            progressDiv.innerHTML = '<p>Procesando combinación...</p>';
+            const formData = new FormData();
+            formData.append('zip_url', zipUrl || '');
+            for (let url of pdfUrls) {
+                formData.append('pdf_urls', url);
+            }
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            const response = await fetch('', {  // misma URL
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                // Descargar el PDF resultante
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'combinado.pdf';
+                link.click();
+                URL.revokeObjectURL(link.href);
+                progressDiv.innerHTML = '<p class="success">¡PDF generado!</p>';
+            } else {
+                const errorText = await response.text();
+                progressDiv.innerHTML = `<p class="error">Error: ${errorText}</p>`;
+            }
+        } catch (err) {
+            progressDiv.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+        }
+    });
+    
+    async function subirABlob(file) {
+        // Obtener URL de subida desde Vercel Blob (recomendado: usar /api/upload-url)
+        // Alternativa simplificada: subir directamente con PUT usando el token.
+        const url = 'https://blob.vercel.storage/' + encodeURIComponent(file.name);
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${BLOB_TOKEN}`,
+                'Content-Type': file.type
+            },
+            body: file
+        });
+        if (!response.ok) throw new Error(`Fallo subida de ${file.name}: ${response.statusText}`);
+        // La URL pública del blob
+        return url;
+    }
+</script>
+</body>
+</html>
