@@ -40,27 +40,20 @@
 
 <script>
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-
-    async function getUploadUrl(filename) {
-        const res = await fetch('/get-upload-url/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify({ filename })
-        });
-        if (!res.ok) throw new Error(`No se pudo obtener URL de subida: ${res.statusText}`);
-        const data = await res.json();
-        return data.url;
-    }
+    const BLOB_TOKEN = '{{ blob_token }}';
 
     async function subirABlob(file) {
-        const uploadUrl = await getUploadUrl(file.name);
-        const response = await fetch(uploadUrl, {
+        const url = 'https://blob.vercel.storage/' + encodeURIComponent(file.name);
+        const response = await fetch(url, {
             method: 'PUT',
-            headers: { 'Content-Type': file.type },
+            headers: {
+                'Authorization': `Bearer ${BLOB_TOKEN}`,
+                'Content-Type': file.type
+            },
             body: file
         });
         if (!response.ok) throw new Error(`Fallo subida de ${file.name}: ${response.statusText}`);
-        return uploadUrl;
+        return url;
     }
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
@@ -71,26 +64,14 @@
         
         progressDiv.innerHTML = '<p>Subiendo archivos a almacenamiento...</p>';
         let zipUrl = null;
-        let pdfUrls1 = [];
-        let pdfUrls2 = [];
+        let pdfUrls1 = [], pdfUrls2 = [];
         
         try {
-            // Subir PDFs del grupo 1
-            for (let i = 0; i < pdfFiles1.length; i++) {
-                const url = await subirABlob(pdfFiles1[i]);
-                pdfUrls1.push(url);
-            }
-            // Subir PDFs del grupo 2
-            for (let i = 0; i < pdfFiles2.length; i++) {
-                const url = await subirABlob(pdfFiles2[i]);
-                pdfUrls2.push(url);
-            }
-            // Subir ZIP si existe
-            if (zipFile) {
-                zipUrl = await subirABlob(zipFile);
-            }
+            for (let f of pdfFiles1) pdfUrls1.push(await subirABlob(f));
+            for (let f of pdfFiles2) pdfUrls2.push(await subirABlob(f));
+            if (zipFile) zipUrl = await subirABlob(zipFile);
             
-            progressDiv.innerHTML = '<p>Procesando combinación en servidor...</p>';
+            progressDiv.innerHTML = '<p>Procesando combinación...</p>';
             const formData = new FormData();
             formData.append('zip_url', zipUrl || '');
             pdfUrls1.forEach(url => formData.append('pdf_urls1', url));
