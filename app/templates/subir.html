@@ -15,22 +15,25 @@
 <body>
 <div class="container">
     <h1>Combinar PDFs y ZIP en un solo PDF</h1>
-    <p>El orden final: PDFs del Grupo 1 → PDFs del Grupo 2 → Contenido del ZIP (orden alfabético).</p>
-    <p>Los archivos se suben directamente a Vercel Blob (máx. 50 MB por archivo).</p>
+    <p>Orden: Grupo 1 → Grupo 2 → contenido del ZIP (orden alfabético).</p>
+    <p>Los archivos se suben directamente a Vercel Blob (máx. 50 MB).</p>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    {% if not blob_token %}
+        <div class="error">⚠️ Token de Vercel Blob no configurado. Revisa variables de entorno.</div>
+    {% endif %}
     
     <form id="uploadForm">
         {% csrf_token %}
         <div class="file-input">
-            <label>📄 Grupo 1 - PDFs (se agregan primero):</label><br>
+            <label>📄 Grupo 1 - PDFs (primero):</label><br>
             <input type="file" id="pdfFiles1" accept=".pdf" multiple>
         </div>
         <div class="file-input">
-            <label>📄 Grupo 2 - PDFs (se agregan después del grupo 1):</label><br>
+            <label>📄 Grupo 2 - PDFs (después del grupo 1):</label><br>
             <input type="file" id="pdfFiles2" accept=".pdf" multiple>
         </div>
         <div class="file-input">
-            <label>📦 Archivo ZIP (opcional, se agrega al final):</label><br>
+            <label>📦 Archivo ZIP (opcional, al final):</label><br>
             <input type="file" id="zipFile" accept=".zip">
         </div>
         <button type="button" id="submitBtn">Combinar y descargar</button>
@@ -41,9 +44,24 @@
 <script>
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     const BLOB_TOKEN = '{{ blob_token }}';
+    // Si tienes BLOB_STORE_ID, puedes usarlo para construir una URL más robusta
+    // De lo contrario, usamos el dominio público genérico
+    const BLOB_STORE_ID = '{{ blob_store_id }}';
+    const BLOB_BASE_URL = BLOB_STORE_ID 
+        ? `https://${BLOB_STORE_ID}.public.blob.vercel-storage.com` 
+        : 'https://blob.vercel.storage';
+
+    if (!BLOB_TOKEN) {
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('progress').innerHTML = '<p class="error">❌ Token no configurado. No se pueden subir archivos.</p>';
+    }
 
     async function subirABlob(file) {
-        const url = 'https://blob.vercel.storage/' + encodeURIComponent(file.name);
+        // Generar un nombre único para evitar colisiones
+        const timestamp = Date.now();
+        const safeName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const url = `${BLOB_BASE_URL}/${encodeURIComponent(safeName)}`;
+        
         const response = await fetch(url, {
             method: 'PUT',
             headers: {
@@ -52,11 +70,18 @@
             },
             body: file
         });
-        if (!response.ok) throw new Error(`Fallo subida de ${file.name}: ${response.statusText}`);
-        return url;
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        return url;  // URL pública del blob
     }
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
+        if (!BLOB_TOKEN) {
+            alert('Token de Vercel Blob no disponible');
+            return;
+        }
         const zipFile = document.getElementById('zipFile').files[0];
         const pdfFiles1 = Array.from(document.getElementById('pdfFiles1').files);
         const pdfFiles2 = Array.from(document.getElementById('pdfFiles2').files);
