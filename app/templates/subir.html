@@ -44,12 +44,8 @@
 <script>
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     const BLOB_TOKEN = '{{ blob_token }}';
-    // Si tienes BLOB_STORE_ID, puedes usarlo para construir una URL más robusta
-    // De lo contrario, usamos el dominio público genérico
-    const BLOB_STORE_ID = '{{ blob_store_id }}';
-    const BLOB_BASE_URL = BLOB_STORE_ID 
-        ? `https://${BLOB_STORE_ID}.public.blob.vercel-storage.com` 
-        : 'https://blob.vercel.storage';
+    // URL CORRECTA de Vercel Blob (dominio público)
+    const BLOB_BASE_URL = 'https://blob.vercel.storage';
 
     if (!BLOB_TOKEN) {
         document.getElementById('submitBtn').disabled = true;
@@ -59,8 +55,9 @@
     async function subirABlob(file) {
         // Generar un nombre único para evitar colisiones
         const timestamp = Date.now();
-        const safeName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        const url = `${BLOB_BASE_URL}/${encodeURIComponent(safeName)}`;
+        const nombreLimpio = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const nombreUnico = `${timestamp}_${nombreLimpio}`;
+        const url = `${BLOB_BASE_URL}/${encodeURIComponent(nombreUnico)}`;
         
         const response = await fetch(url, {
             method: 'PUT',
@@ -71,10 +68,15 @@
             body: file
         });
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const text = await response.text();
+                errorMsg += `: ${text}`;
+            } catch(e) {}
+            throw new Error(`Fallo subida de ${file.name}: ${errorMsg}`);
         }
-        return url;  // URL pública del blob
+        // La URL pública del blob es la misma que usamos para subir
+        return url;
     }
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
