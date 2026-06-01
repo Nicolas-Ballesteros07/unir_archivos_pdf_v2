@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Combinador de ZIP + PDFs con Vercel Blob</title>
+    <title>Combinador de ZIP + PDFs (dos grupos de PDFs)</title>
     <meta charset="utf-8">
     <style>
         body { font-family: Arial; margin: 2rem; }
@@ -14,19 +14,24 @@
 </head>
 <body>
 <div class="container">
-    <h1>Combinar ZIP y/o PDFs en un solo PDF</h1>
+    <h1>Combinar PDFs y ZIP en un solo PDF</h1>
+    <p>El orden final: PDFs del Grupo 1 → PDFs del Grupo 2 → Contenido del ZIP (orden alfabético).</p>
     <p>Los archivos se suben directamente a Vercel Blob (máx. 50 MB por archivo).</p>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     
     <form id="uploadForm">
         {% csrf_token %}
         <div class="file-input">
-            <label>Archivo ZIP (opcional):</label><br>
-            <input type="file" id="zipFile" accept=".zip">
+            <label>📄 Grupo 1 - PDFs (se agregan primero):</label><br>
+            <input type="file" id="pdfFiles1" accept=".pdf" multiple>
         </div>
         <div class="file-input">
-            <label>Archivos PDF (opcional, múltiple):</label><br>
-            <input type="file" id="pdfFiles" accept=".pdf" multiple>
+            <label>📄 Grupo 2 - PDFs (se agregan después del grupo 1):</label><br>
+            <input type="file" id="pdfFiles2" accept=".pdf" multiple>
+        </div>
+        <div class="file-input">
+            <label>📦 Archivo ZIP (opcional, se agrega al final):</label><br>
+            <input type="file" id="zipFile" accept=".zip">
         </div>
         <button type="button" id="submitBtn">Combinar y descargar</button>
     </form>
@@ -55,30 +60,41 @@
             body: file
         });
         if (!response.ok) throw new Error(`Fallo subida de ${file.name}: ${response.statusText}`);
-        // La URL pública es la misma que la de subida (Vercel Blob)
         return uploadUrl;
     }
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
         const zipFile = document.getElementById('zipFile').files[0];
-        const pdfFiles = document.getElementById('pdfFiles').files;
+        const pdfFiles1 = Array.from(document.getElementById('pdfFiles1').files);
+        const pdfFiles2 = Array.from(document.getElementById('pdfFiles2').files);
         const progressDiv = document.getElementById('progress');
         
         progressDiv.innerHTML = '<p>Subiendo archivos a almacenamiento...</p>';
         let zipUrl = null;
-        let pdfUrls = [];
+        let pdfUrls1 = [];
+        let pdfUrls2 = [];
         
         try {
-            if (zipFile) zipUrl = await subirABlob(zipFile);
-            for (let i = 0; i < pdfFiles.length; i++) {
-                const url = await subirABlob(pdfFiles[i]);
-                pdfUrls.push(url);
+            // Subir PDFs del grupo 1
+            for (let i = 0; i < pdfFiles1.length; i++) {
+                const url = await subirABlob(pdfFiles1[i]);
+                pdfUrls1.push(url);
+            }
+            // Subir PDFs del grupo 2
+            for (let i = 0; i < pdfFiles2.length; i++) {
+                const url = await subirABlob(pdfFiles2[i]);
+                pdfUrls2.push(url);
+            }
+            // Subir ZIP si existe
+            if (zipFile) {
+                zipUrl = await subirABlob(zipFile);
             }
             
-            progressDiv.innerHTML = '<p>Procesando combinación...</p>';
+            progressDiv.innerHTML = '<p>Procesando combinación en servidor...</p>';
             const formData = new FormData();
             formData.append('zip_url', zipUrl || '');
-            pdfUrls.forEach(url => formData.append('pdf_urls', url));
+            pdfUrls1.forEach(url => formData.append('pdf_urls1', url));
+            pdfUrls2.forEach(url => formData.append('pdf_urls2', url));
             formData.append('csrfmiddlewaretoken', csrfToken);
             
             const response = await fetch('', { method: 'POST', body: formData });
@@ -89,13 +105,13 @@
                 link.download = 'combinado.pdf';
                 link.click();
                 URL.revokeObjectURL(link.href);
-                progressDiv.innerHTML = '<p class="success">¡PDF generado!</p>';
+                progressDiv.innerHTML = '<p class="success">✅ PDF generado correctamente</p>';
             } else {
                 const errorText = await response.text();
-                progressDiv.innerHTML = `<p class="error">Error: ${errorText}</p>`;
+                progressDiv.innerHTML = `<p class="error">❌ Error: ${errorText}</p>`;
             }
         } catch (err) {
-            progressDiv.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+            progressDiv.innerHTML = `<p class="error">❌ Error: ${err.message}</p>`;
         }
     });
 </script>
