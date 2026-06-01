@@ -9,6 +9,9 @@ from pypdf import PdfMerger
 from PIL import Image
 import img2pdf
 
+import sys
+print("utils.py cargado correctamente", file=sys.stderr)
+
 def descargar_archivo(url):
     """Descarga un archivo desde una URL y devuelve la ruta de un archivo temporal."""
     resp = requests.get(url, timeout=30)
