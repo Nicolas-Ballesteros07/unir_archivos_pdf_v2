@@ -34,7 +34,6 @@ def subir_y_combinar(request):
                 'blob_token': blob_token,
                 'blob_store_id': blob_store_id,
             })
-
     # GET
     return render(request, 'subir.html', {
         'blob_token': blob_token,
